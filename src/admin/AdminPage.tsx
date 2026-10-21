@@ -1,17 +1,93 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 
 import {
   AdminProject,
   getPortfolioData,
-  getProjectInquiries,
+  ProjectInquirySubmission,
   resetPortfolioData,
   savePortfolioData,
 } from "./portfolioData";
 import { supabase } from "../lib/supabase";
 
 const inputClass = "w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-[#C3073F]";
+
+type ProjectInquiryRow = {
+  id: number | string;
+  created_at: string;
+  full_name: string;
+  company_name: string | null;
+  email: string;
+  phone: string | null;
+  website_url: string | null;
+  business_description: string | null;
+  target_audience: string | null;
+  project_goals: unknown;
+  preferred_websites: string | null;
+  brand_assets: string | null;
+  content_assets: string | null;
+  required_features: unknown;
+  budget: string | number | null;
+  launch_date: string | null;
+  maintenance: string | null;
+};
+
+const mapSelections = (value: unknown) => {
+  const values: string[] = [];
+  let other = "";
+
+  if (!Array.isArray(value)) return { values, other };
+
+  value.forEach((item: unknown) => {
+    if (typeof item === "string") {
+      values.push(item);
+      return;
+    }
+    if (item && typeof item === "object" && "label" in item && typeof item.label === "string") {
+      values.push(item.label);
+      if (item.label === "Other" && "detail" in item && typeof item.detail === "string") {
+        other = item.detail;
+      }
+    }
+  });
+
+  return { values, other };
+};
+
+const mapProjectInquiry = (row: ProjectInquiryRow): ProjectInquirySubmission => {
+  const goals = mapSelections(row.project_goals);
+  const features = mapSelections(row.required_features);
+  return {
+    id: String(row.id),
+    submittedAt: row.created_at,
+    clientDetails: {
+      fullName: row.full_name,
+      company: row.company_name ?? "",
+      email: row.email,
+      phone: row.phone ?? "",
+      website: row.website_url ?? "",
+    },
+    projectOverview: {
+      businessDescription: row.business_description ?? "",
+      audience: row.target_audience ?? "",
+      goals: goals.values,
+      otherGoal: goals.other,
+    },
+    designFeatures: {
+      inspiration: row.preferred_websites ?? "",
+      brandAssets: row.brand_assets ?? "",
+      contentProvider: row.content_assets ?? "",
+      features: features.values,
+      otherFeature: features.other,
+    },
+    logisticsBudget: {
+      budget: row.budget === null ? "" : String(row.budget),
+      launchDate: row.launch_date ?? "",
+      maintenance: row.maintenance ?? "",
+    },
+  };
+};
 
 const emptyProject = (): AdminProject => ({
   name: "New project",
@@ -23,19 +99,39 @@ const emptyProject = (): AdminProject => ({
 
 const AdminDashboard = () => {
   const [data, setData] = useState(getPortfolioData);
-  const [inquiries, setInquiries] = useState(getProjectInquiries);
+  const [inquiries, setInquiries] = useState<ProjectInquirySubmission[]>([]);
+  const [inquiriesLoading, setInquiriesLoading] = useState(true);
+  const [inquiriesError, setInquiriesError] = useState("");
   const [saved, setSaved] = useState(false);
   const [lockError, setLockError] = useState("");
 
-  useEffect(() => {
-    const refreshInquiries = () => setInquiries(getProjectInquiries());
-    window.addEventListener("project-inquiries-change", refreshInquiries);
-    window.addEventListener("storage", refreshInquiries);
-    return () => {
-      window.removeEventListener("project-inquiries-change", refreshInquiries);
-      window.removeEventListener("storage", refreshInquiries);
-    };
+  const refreshInquiries = useCallback(async () => {
+    if (!supabase) {
+      setInquiriesError("Supabase is not configured.");
+      setInquiriesLoading(false);
+      return;
+    }
+
+    setInquiriesLoading(true);
+    setInquiriesError("");
+    try {
+      const { data: rows, error } = await supabase
+        .from("project_inquiries")
+        .select("id, created_at, full_name, company_name, email, phone, website_url, business_description, target_audience, project_goals, preferred_websites, brand_assets, content_assets, required_features, budget, launch_date, maintenance")
+        .order("created_at", { ascending: false })
+        .returns<ProjectInquiryRow[]>();
+      if (error) throw error;
+      setInquiries((rows ?? []).map(mapProjectInquiry));
+    } catch (error) {
+      setInquiriesError(error instanceof Error ? error.message : "Could not load project requests from Supabase.");
+    } finally {
+      setInquiriesLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void refreshInquiries();
+  }, [refreshInquiries]);
 
   const save = (event: FormEvent) => {
     event.preventDefault();
@@ -49,7 +145,7 @@ const AdminDashboard = () => {
       window.location.reload();
       return;
     }
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) {
       setLockError(error.message);
       return;
@@ -103,7 +199,11 @@ const AdminDashboard = () => {
 
         <section className="rounded-2xl border border-[#C3073F]/30 bg-[#C3073F]/[0.04] p-5">
           <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.18em] text-[#C3073F]">Client onboarding</p><h2 className="mt-1 text-xl font-bold">Incoming project requests</h2></div><span className="rounded-full border border-[#C3073F]/40 px-3 py-1 text-xs font-bold text-[#C3073F]">{inquiries.length} request{inquiries.length === 1 ? "" : "s"}</span></div>
-          {inquiries.length === 0 ? <p className="mt-4 text-sm text-white/60">No project requests have been submitted in this browser yet.</p> : <div className="mt-5 space-y-3">{inquiries.map((inquiry) => <details key={inquiry.id} className="rounded-xl border border-white/10 bg-black/20 p-4"><summary className="cursor-pointer list-none"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-bold">{inquiry.clientDetails.fullName}</p><p className="mt-1 text-sm text-white/60">{inquiry.clientDetails.company} · {inquiry.clientDetails.email}</p></div><span className="text-xs text-white/45">{new Date(inquiry.submittedAt).toLocaleString()}</span></div></summary><div className="mt-5 grid gap-5 border-t border-white/10 pt-5 text-sm text-white/75 sm:grid-cols-2"><div><p className="font-bold text-white">Client details</p><p className="mt-2">Phone: {inquiry.clientDetails.phone}</p>{inquiry.clientDetails.website && <p className="mt-1 break-all">Website: {inquiry.clientDetails.website}</p>}</div><div><p className="font-bold text-white">Project overview</p><p className="mt-2">{inquiry.projectOverview.businessDescription}</p><p className="mt-2">Audience: {inquiry.projectOverview.audience}</p><p className="mt-2">Goals: {inquiry.projectOverview.goals.join(", ")}{inquiry.projectOverview.otherGoal ? ` — ${inquiry.projectOverview.otherGoal}` : ""}</p></div><div><p className="font-bold text-white">Design & features</p><p className="mt-2">Brand assets: {inquiry.designFeatures.brandAssets || "Not specified"}</p><p className="mt-2">Content: {inquiry.designFeatures.contentProvider || "Not specified"}</p><p className="mt-2">Features: {inquiry.designFeatures.features.join(", ") || "Not specified"}{inquiry.designFeatures.otherFeature ? ` — ${inquiry.designFeatures.otherFeature}` : ""}</p></div><div><p className="font-bold text-white">Logistics & budget</p><p className="mt-2">Budget: {inquiry.logisticsBudget.budget || "Not specified"}</p><p className="mt-2">Launch date: {inquiry.logisticsBudget.launchDate || "Not specified"}</p><p className="mt-2">Maintenance: {inquiry.logisticsBudget.maintenance || "Not specified"}</p></div></div></details>)}</div>}
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            {inquiriesError ? <p className="text-sm text-red-300" role="alert">Could not load requests from Supabase: {inquiriesError}. Check that your admin account has permission to read this table.</p> : <p className="text-sm text-white/60">{inquiriesLoading ? "Loading project requests…" : inquiries.length === 0 ? "No project requests have been submitted yet." : "Requests loaded from Supabase."}</p>}
+            <button type="button" onClick={() => { void refreshInquiries(); }} disabled={inquiriesLoading} className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold disabled:opacity-50">{inquiriesLoading ? "Loading…" : "Refresh requests"}</button>
+          </div>
+          {inquiries.length > 0 && <div className="mt-5 space-y-3">{inquiries.map((inquiry) => <details key={inquiry.id} className="rounded-xl border border-white/10 bg-black/20 p-4"><summary className="cursor-pointer list-none"><div className="flex flex-wrap items-center justify-between gap-2"><div><p className="font-bold">{inquiry.clientDetails.fullName}</p><p className="mt-1 text-sm text-white/60">{inquiry.clientDetails.company} · {inquiry.clientDetails.email}</p></div><span className="text-xs text-white/45">{new Date(inquiry.submittedAt).toLocaleString()}</span></div></summary><div className="mt-5 grid gap-5 border-t border-white/10 pt-5 text-sm text-white/75 sm:grid-cols-2"><div><p className="font-bold text-white">Client details</p><p className="mt-2">Phone: {inquiry.clientDetails.phone}</p>{inquiry.clientDetails.website && <p className="mt-1 break-all">Website: {inquiry.clientDetails.website}</p>}</div><div><p className="font-bold text-white">Project overview</p><p className="mt-2">{inquiry.projectOverview.businessDescription}</p><p className="mt-2">Audience: {inquiry.projectOverview.audience}</p><p className="mt-2">Goals: {inquiry.projectOverview.goals.join(", ")}{inquiry.projectOverview.otherGoal ? ` — ${inquiry.projectOverview.otherGoal}` : ""}</p></div><div><p className="font-bold text-white">Design & features</p><p className="mt-2">Brand assets: {inquiry.designFeatures.brandAssets || "Not specified"}</p><p className="mt-2">Content: {inquiry.designFeatures.contentProvider || "Not specified"}</p><p className="mt-2">Features: {inquiry.designFeatures.features.join(", ") || "Not specified"}{inquiry.designFeatures.otherFeature ? ` — ${inquiry.designFeatures.otherFeature}` : ""}</p></div><div><p className="font-bold text-white">Logistics & budget</p><p className="mt-2">Budget: {inquiry.logisticsBudget.budget || "Not specified"}</p><p className="mt-2">Launch date: {inquiry.logisticsBudget.launchDate || "Not specified"}</p><p className="mt-2">Maintenance: {inquiry.logisticsBudget.maintenance || "Not specified"}</p></div></div></details>)}</div>}
         </section>
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
@@ -154,14 +254,27 @@ const AdminPage = () => {
     }
 
     let active = true;
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const isPageRefresh = navigation?.type === "reload";
+    let lockingAfterRefresh = isPageRefresh;
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!active) return;
+      if (lockingAfterRefresh && nextSession) return;
       setSession(nextSession);
       setAuthChecking(false);
       setUnlocked(Boolean(nextSession));
     });
 
-    supabase.auth.getSession()
+    const initializeAuth = isPageRefresh
+      ? supabase.auth.signOut({ scope: "local" }).then(({ error: signOutError }) => {
+        if (!active) return;
+        lockingAfterRefresh = false;
+        if (signOutError) setError(`Could not lock the admin session: ${signOutError.message}`);
+        setSession(null);
+        setUnlocked(false);
+        setAuthChecking(false);
+      })
+      : supabase.auth.getSession()
       .then(({ data, error: sessionError }) => {
         if (!active) return;
         if (sessionError) setError(sessionError.message);
@@ -174,6 +287,15 @@ const AdminPage = () => {
         setError(sessionError instanceof Error ? sessionError.message : "Unable to check your Supabase session.");
         setAuthChecking(false);
       });
+
+    initializeAuth.catch((authError: unknown) => {
+      if (!active) return;
+      lockingAfterRefresh = false;
+      setError(authError instanceof Error ? authError.message : "Unable to lock the admin session.");
+      setSession(null);
+      setUnlocked(false);
+      setAuthChecking(false);
+    });
 
     return () => {
       active = false;
