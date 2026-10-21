@@ -26,9 +26,9 @@ VITE_SUPABASE_ANON_KEY=
 
 The `.env` file is ignored by Git.
 
-The `/admin` route uses Supabase Auth passkeys for face/device unlock. In the Supabase dashboard, enable passkeys under **Authentication → Passkeys** and configure the relying-party ID and allowed HTTPS origin to match the deployed site. Under **Authentication → URL Configuration**, allow the deployed `/admin` URL as a redirect. Create the admin user under **Authentication → Users** and disable public sign-ups. On first setup, sign in to that existing account with the emailed link and register a passkey; subsequent admin access uses the passkey prompt (Face ID, Windows Hello, Touch ID, or another device authenticator). The **Lock** button signs out.
+The `/admin` route uses Supabase email/password authentication. In **Authentication → Users**, create the administrator account with a password; keep public sign-ups disabled so only accounts you add can access the dashboard. Enable email/password sign-in in the Supabase authentication providers. Sign in at `/admin` with that account; the **Lock** button signs out.
 
-Passkeys prove identity to Supabase, but the current portfolio dashboard stores its editable portfolio data in browser local storage. Protecting shared/private admin data also requires storing it in Supabase and enforcing admin-only Row Level Security policies.
+The current portfolio dashboard stores editable portfolio content and inquiries in browser local storage. Supabase sign-in protects the admin route, but shared/private data must be stored in Supabase and protected with admin-only Row Level Security policies.
 
 ## Deployment
 

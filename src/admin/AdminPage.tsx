@@ -12,7 +12,6 @@ import {
 import { supabase } from "../lib/supabase";
 
 const inputClass = "w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-[#C3073F]";
-const PASSKEY_SETUP_KEY = "twd-portfolio-passkey-setup";
 
 const emptyProject = (): AdminProject => ({
   name: "New project",
@@ -142,12 +141,10 @@ const AdminDashboard = () => {
 const AdminPage = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [authChecking, setAuthChecking] = useState(Boolean(supabase));
-  const [hasPasskey, setHasPasskey] = useState<boolean | null>(null);
   const [unlocked, setUnlocked] = useState(false);
   const [email, setEmail] = useState("");
-  const [showEmailSetup, setShowEmailSetup] = useState(() => localStorage.getItem(PASSKEY_SETUP_KEY) !== "true");
+  const [password, setPassword] = useState("");
   const [working, setWorking] = useState(false);
-  const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -161,9 +158,7 @@ const AdminPage = () => {
       if (!active) return;
       setSession(nextSession);
       setAuthChecking(false);
-      if (!nextSession) {
-        setUnlocked(false);
-      }
+      setUnlocked(Boolean(nextSession));
     });
 
     supabase.auth.getSession()
@@ -171,10 +166,8 @@ const AdminPage = () => {
         if (!active) return;
         if (sessionError) setError(sessionError.message);
         setSession(data.session);
+        setUnlocked(Boolean(data.session));
         setAuthChecking(false);
-        if (!data.session) {
-          setUnlocked(false);
-        }
       })
       .catch((sessionError: unknown) => {
         if (!active) return;
@@ -188,35 +181,7 @@ const AdminPage = () => {
     };
   }, []);
 
-  useEffect(() => {
-    if (!supabase || !session) {
-      setHasPasskey(null);
-      return;
-    }
-
-    let active = true;
-    supabase.auth.passkey.list()
-      .then(({ data, error: passkeyError }) => {
-        if (!active) return;
-        if (passkeyError) {
-          setError(passkeyError.message);
-          setHasPasskey(null);
-          return;
-        }
-        setHasPasskey((data ?? []).length > 0);
-      })
-      .catch((passkeyError: unknown) => {
-        if (!active) return;
-        setError(passkeyError instanceof Error ? passkeyError.message : "Unable to check registered passkeys.");
-        setHasPasskey(null);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [session]);
-
-  const sendSetupLink = async (event: FormEvent) => {
+  const signIn = async (event: FormEvent) => {
     event.preventDefault();
     if (!supabase) {
       setError("Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then redeploy.");
@@ -225,58 +190,17 @@ const AdminPage = () => {
 
     setWorking(true);
     setError("");
-    setNotice("");
     try {
-      const { error: otpError } = await supabase.auth.signInWithOtp({
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
         email: email.trim(),
-        options: {
-          emailRedirectTo: `${window.location.origin}/admin`,
-          shouldCreateUser: false,
-        },
+        password,
       });
-      if (otpError) throw otpError;
-      setNotice("Check your email for a secure sign-in link. Open it on this device to set up Face ID or your device passkey.");
-    } catch (authError) {
-      setError(authError instanceof Error ? authError.message : "Could not send the sign-in link.");
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const registerPasskey = async () => {
-    if (!supabase) return;
-    setWorking(true);
-    setError("");
-    setNotice("");
-    try {
-      const { data, error: registrationError } = await supabase.auth.registerPasskey();
-      if (registrationError) throw registrationError;
-      if (!data) throw new Error("Passkey registration did not complete.");
-      setHasPasskey(true);
-      localStorage.setItem(PASSKEY_SETUP_KEY, "true");
-      setShowEmailSetup(false);
-      setNotice("Face unlock is ready. Use the passkey button to open the admin dashboard.");
-    } catch (registrationError) {
-      setError(registrationError instanceof Error ? registrationError.message : "Could not register a passkey.");
-    } finally {
-      setWorking(false);
-    }
-  };
-
-  const unlockWithPasskey = async () => {
-    if (!supabase) return;
-    setWorking(true);
-    setError("");
-    setNotice("");
-    try {
-      const { data, error: authenticationError } = await supabase.auth.signInWithPasskey();
-      if (authenticationError) throw authenticationError;
-      if (!data?.session) throw new Error("Passkey sign-in did not return an authenticated session.");
-      localStorage.setItem(PASSKEY_SETUP_KEY, "true");
+      if (authError) throw authError;
+      if (!data.session) throw new Error("Sign-in did not return an authenticated session.");
       setSession(data.session);
       setUnlocked(true);
-    } catch (authenticationError) {
-      setError(authenticationError instanceof Error ? authenticationError.message : "Face unlock was not completed.");
+    } catch (authError) {
+      setError(authError instanceof Error ? authError.message : "Unable to sign in.");
     } finally {
       setWorking(false);
     }
@@ -286,49 +210,30 @@ const AdminPage = () => {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#080808] px-4 text-white">
-      <div className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-2xl">
+      <form onSubmit={(event) => void signIn(event)} className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-2xl">
         <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#C3073F]">Protected area</p>
-        <h1 className="mt-2 text-3xl font-black">Admin face lock</h1>
-        <p className="mt-2 text-sm text-white/60">Unlock with a passkey using Face ID, Windows Hello, Touch ID, or your device’s screen lock.</p>
+        <h1 className="mt-2 text-3xl font-black">Admin login</h1>
+        <p className="mt-2 text-sm text-white/60">Sign in with your administrator email and password.</p>
         {authChecking && <p className="mt-5 text-sm text-white/60">Checking secure sign-in…</p>}
         {!authChecking && !supabase && <p className="mt-5 text-sm text-red-300">Supabase is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then redeploy.</p>}
-        {!authChecking && supabase && hasPasskey !== false && (
-          <button type="button" disabled={working} onClick={() => void unlockWithPasskey()} className="mt-6 w-full rounded-lg bg-[#C3073F] px-5 py-3 text-sm font-bold text-white hover:bg-[#950740] disabled:cursor-wait disabled:opacity-60">
-            {working ? "Waiting for device…" : "Unlock with Face ID / Passkey"}
-          </button>
-        )}
-        {!authChecking && supabase && session && hasPasskey === false && (
-          <div className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
-            <h2 className="font-bold">Set up face unlock</h2>
-            <p className="mt-2 text-sm text-white/60">Register a passkey on this device. Your device handles biometric verification; this site never receives your face or fingerprint.</p>
-            <button type="button" disabled={working} onClick={() => void registerPasskey()} className="mt-4 w-full rounded-lg bg-[#C3073F] px-5 py-3 text-sm font-bold text-white hover:bg-[#950740] disabled:cursor-wait disabled:opacity-60">
-              {working ? "Setting up…" : "Set up Face ID / Passkey"}
-            </button>
-          </div>
-        )}
-        {!authChecking && supabase && !session && hasPasskey === null && showEmailSetup && (
-          <form onSubmit={(event) => void sendSetupLink(event)} className="mt-6 border-t border-white/10 pt-5">
-            <p className="text-sm font-semibold">First-time setup or new device</p>
-            <p className="mt-1 text-sm text-white/60">Verify your existing admin account by email once, then register a passkey for biometric unlock.</p>
-            <label className="mt-4 block text-sm font-semibold">
+        {!authChecking && supabase && (
+          <>
+            <label className="mt-6 block text-sm font-semibold">
               Admin email
-              <input type="email" autoComplete="email" required value={email} onChange={(event) => setEmail(event.target.value)} className={`${inputClass} mt-2`} />
+              <input type="email" autoComplete="username" required value={email} onChange={(event) => setEmail(event.target.value)} className={`${inputClass} mt-2`} />
             </label>
-            <button type="submit" disabled={working} className="mt-4 w-full rounded-lg border border-white/20 px-5 py-3 text-sm font-bold text-white hover:border-[#C3073F] disabled:cursor-wait disabled:opacity-60">
-              {working ? "Sending link…" : "Send secure setup link"}
+            <label className="mt-4 block text-sm font-semibold">
+              Password
+              <input type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} className={`${inputClass} mt-2`} />
+            </label>
+            <button type="submit" disabled={working} className="mt-6 w-full rounded-lg bg-[#C3073F] px-5 py-3 text-sm font-bold text-white hover:bg-[#950740] disabled:cursor-wait disabled:opacity-60">
+              {working ? "Signing in…" : "Sign in"}
             </button>
-          </form>
+          </>
         )}
-        {!authChecking && supabase && !session && hasPasskey === null && !showEmailSetup && (
-          <button type="button" onClick={() => setShowEmailSetup(true)} className="mt-4 text-sm font-semibold text-white/60 underline underline-offset-4 hover:text-white">
-            Set up on a new device
-          </button>
-        )}
-        <p className="mt-5 text-xs leading-5 text-white/45">Biometric checks are performed by your device’s passkey service. The website does not access camera or fingerprint data.</p>
         {error && <p className="mt-3 text-sm text-red-400" role="alert">{error}</p>}
-        {notice && <p className="mt-3 text-sm text-emerald-300" role="status">{notice}</p>}
         <div className="mt-6"><Link to="/" className="text-sm font-semibold text-white/70 hover:text-white">Back to portfolio</Link></div>
-      </div>
+      </form>
     </main>
   );
 };
