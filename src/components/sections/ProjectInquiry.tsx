@@ -202,7 +202,22 @@ const ProjectInquiry = ({ open, onClose }: { open: boolean; onClose: () => void 
                         {data.designFeatures.features.includes("Other") && <Field label="Please specify" required error={errors.otherFeature}><input value={data.designFeatures.otherFeature} onChange={(event) => update("designFeatures", "otherFeature", event.target.value)} className={inputClass} placeholder="Describe the feature" /></Field>}
                       </div>}
                       {step === 3 && <div className="mt-7 space-y-6">
-                        <fieldset><legend className="text-sm font-semibold text-[#F5F5F2]">What is your estimated budget for this project?</legend><div className="mt-3 grid gap-2 sm:grid-cols-2">{["Under $1,000", "$1,000 – $3,000", "$3,000 – $5,000", "$5,000+"].map((option) => <label key={option} className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-black/15 px-4 py-3 text-sm text-[#C8C8C8]"><input type="radio" name="budget" value={option} checked={data.logisticsBudget.budget === option} onChange={(event) => update("logisticsBudget", "budget", event.target.value)} className="accent-[#C3073F]" />{option}</label>)}</div></fieldset>
+                        <Field label="What is your estimated budget for this project?">
+                          <div className="flex items-center rounded-xl border border-white/12 bg-black/25 focus-within:border-[#C3073F] focus-within:ring-2 focus-within:ring-[#C3073F]/20">
+                            <span className="pl-4 text-sm text-[#C8C8C8]" aria-hidden="true">₹</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="1"
+                              inputMode="numeric"
+                              value={data.logisticsBudget.budget}
+                              onChange={(event) => update("logisticsBudget", "budget", event.target.value)}
+                              className="w-full bg-transparent px-3 py-3 text-sm text-[#F5F5F2] outline-none placeholder:text-white/35"
+                              placeholder="Enter amount"
+                              aria-label="Estimated budget in rupees"
+                            />
+                          </div>
+                        </Field>
                         <Field label="What is your target launch date?"><input type="date" value={data.logisticsBudget.launchDate} onChange={(event) => update("logisticsBudget", "launchDate", event.target.value)} className={inputClass} /></Field>
                         <fieldset><legend className="text-sm font-semibold text-[#F5F5F2]">Will you need ongoing website maintenance and updates after launch?</legend><div className="mt-3 space-y-2">{["Yes, I want a monthly maintenance plan", "No, I want to manage it myself", "I'm not sure yet"].map((option) => <label key={option} className="flex cursor-pointer items-center gap-3 rounded-xl border border-white/10 bg-black/15 px-4 py-3 text-sm text-[#C8C8C8]"><input type="radio" name="maintenance" value={option} checked={data.logisticsBudget.maintenance === option} onChange={(event) => update("logisticsBudget", "maintenance", event.target.value)} className="accent-[#C3073F]" />{option}</label>)}</div></fieldset>
                       </div>}
