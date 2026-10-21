@@ -10,6 +10,8 @@ import {
 } from "./portfolioData";
 
 const inputClass = "w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-[#C3073F]";
+const ADMIN_SESSION_KEY = "twd-portfolio-admin-unlocked";
+const configuredAdminPassword = import.meta.env.VITE_ADMIN_PASSWORD as string | undefined;
 
 const emptyProject = (): AdminProject => ({
   name: "New project",
@@ -19,7 +21,7 @@ const emptyProject = (): AdminProject => ({
   sourceCodeLink: "https://github.com/",
 });
 
-const AdminPage = () => {
+const AdminDashboard = () => {
   const [data, setData] = useState(getPortfolioData);
   const [inquiries, setInquiries] = useState(getProjectInquiries);
   const [saved, setSaved] = useState(false);
@@ -65,6 +67,7 @@ const AdminPage = () => {
           </div>
           <div className="flex gap-3">
             <Link to="/" className="rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold">View portfolio</Link>
+            <button type="button" onClick={() => { sessionStorage.removeItem(ADMIN_SESSION_KEY); window.location.reload(); }} className="rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold">Lock</button>
             <button type="submit" className="rounded-lg bg-[#C3073F] px-4 py-2 text-sm font-bold text-white">{saved ? "Saved" : "Save changes"}</button>
           </div>
         </header>
@@ -115,6 +118,57 @@ const AdminPage = () => {
         </section>
 
         <button type="button" onClick={() => { resetPortfolioData(); setData(getPortfolioData()); }} className="text-sm font-semibold text-white/60 underline underline-offset-4">Reset all local changes</button>
+      </form>
+    </main>
+  );
+};
+
+const AdminPage = () => {
+  const [unlocked, setUnlocked] = useState(() => sessionStorage.getItem(ADMIN_SESSION_KEY) === "true");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+
+  const unlock = (event: FormEvent) => {
+    event.preventDefault();
+    if (!configuredAdminPassword) {
+      setError("Admin access is not configured. Set VITE_ADMIN_PASSWORD before deploying.");
+      return;
+    }
+    if (password !== configuredAdminPassword) {
+      setError("Incorrect password.");
+      setPassword("");
+      return;
+    }
+    sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+    setUnlocked(true);
+    setError("");
+  };
+
+  if (unlocked) return <AdminDashboard />;
+
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-[#080808] px-4 text-white">
+      <form onSubmit={unlock} className="w-full max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-6 shadow-2xl">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-[#C3073F]">Protected area</p>
+        <h1 className="mt-2 text-3xl font-black">Admin access</h1>
+        <p className="mt-2 text-sm text-white/60">Enter the administrator password to continue.</p>
+        <label className="mt-6 block text-sm font-semibold">
+          Password
+          <input
+            type="password"
+            autoComplete="current-password"
+            autoFocus
+            required
+            value={password}
+            onChange={(event) => { setPassword(event.target.value); setError(""); }}
+            className={`${inputClass} mt-2`}
+          />
+        </label>
+        {error && <p className="mt-3 text-sm text-red-400" role="alert">{error}</p>}
+        <div className="mt-6 flex items-center justify-between gap-3">
+          <Link to="/" className="text-sm font-semibold text-white/70 hover:text-white">Back to portfolio</Link>
+          <button type="submit" className="rounded-lg bg-[#C3073F] px-5 py-2 text-sm font-bold text-white hover:bg-[#950740]">Unlock</button>
+        </div>
       </form>
     </main>
   );
